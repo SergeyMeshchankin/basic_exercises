@@ -33,6 +33,7 @@ messages = [
 import random
 import uuid
 import datetime
+from collections import defaultdict
 
 import lorem
 
@@ -66,5 +67,90 @@ def generate_chat_history():
     return messages
 
 
+def get_most_active_user(messages):
+    user_counts = defaultdict(int)
+    for msg in messages:
+        user_counts[msg['sent_by']] += 1
+    max_count = max(user_counts.values())
+    most_active = [user for user, count in user_counts.items()
+                   if count == max_count]
+    return most_active[0] if most_active else None
+
+
+def get_most_replied_user(messages):
+    message_owners = {msg['id']: msg['sent_by'] for msg in messages}
+    replies_count = defaultdict(int)
+    for msg in messages:
+        if msg['reply_for'] is not None:
+            original_author = message_owners.get(msg['reply_for'])
+            if original_author is not None:
+                replies_count[original_author] += 1
+    if not replies_count:
+        return None
+    max_count = max(replies_count.values())
+    most_replied = [user for user,
+                    count in replies_count.items() if count == max_count]
+    return most_replied[0] if most_replied else None
+
+
+def get_most_seen_users(messages):
+    seen_by_per_user = defaultdict(set)
+    for msg in messages:
+        user = msg['sent_by']
+        seen_by_per_user[user].update(msg['seen_by'])
+    max_seen = max(len(v) for v in seen_by_per_user.values()
+                   ) if seen_by_per_user else 0
+    most_seen = [user for user, seen in seen_by_per_user.items()
+                 if len(seen) == max_seen]
+    return most_seen
+
+
+def get_busiest_time(messages):
+    time_counts = {'утро': 0, 'день': 0, 'вечер': 0}
+    for msg in messages:
+        hour = msg['sent_at'].hour
+        if hour < 12:
+            time_counts['утро'] += 1
+        elif hour < 18:
+            time_counts['день'] += 1
+        else:
+            time_counts['вечер'] += 1
+    return max(time_counts, key=lambda k: time_counts[k])
+
+
+def get_longest_threads(messages):
+    children = defaultdict(list)
+    for msg in messages:
+        if msg['reply_for'] is not None:
+            children[msg['reply_for']].append(msg['id'])
+
+    thread_length = {}
+    sorted_messages = sorted(
+        messages, key=lambda x: x['sent_at'], reverse=True)
+
+    for msg in sorted_messages:
+        msg_id = msg['id']
+        max_child = 0
+        for child_id in children.get(msg_id, []):
+            max_child = max(max_child, thread_length.get(child_id, 0))
+        thread_length[msg_id] = 1 + max_child
+
+    root_messages = [msg for msg in messages if msg['reply_for'] is None]
+    if not root_messages:
+        return []
+    max_len = max(thread_length[msg['id']] for msg in root_messages)
+    return [msg['id'] for msg in root_messages if thread_length[msg['id']] == max_len]
+
+
 if __name__ == "__main__":
-    print(generate_chat_history())
+    messages = generate_chat_history()
+
+print(
+    f"1. Айди пользователя с наибольшим количеством сообщений: {get_most_active_user(messages)}")
+print(
+    f"2. Айди пользователя, на чьи сообщения больше всего отвечали: {get_most_replied_user(messages)}")
+print(
+    f"3. Айди пользователей с наибольшим охватом: {', '.join(map(str, get_most_seen_users(messages)))}")
+print(f"4. Самое активное время: {get_busiest_time(messages)}")
+print(
+    f"5. Идентификаторы самых длинных тредов: {', '.join(map(str, get_longest_threads(messages)))}")
